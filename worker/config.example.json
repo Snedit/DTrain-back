@@ -1,9 +1,0 @@
-{
-  "server_url": "http://localhost:5000",
-  "token": "changeme-worker-token",
-  "worker_name": "worker-1",
-  "poll_interval_sec": 5,
-  "docker_build_timeout_sec": 1800,
-  "docker_run_env": {},
-  "docker_network": null
-}

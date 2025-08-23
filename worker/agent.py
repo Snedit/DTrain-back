@@ -32,6 +32,25 @@ def api_post(cfg, path, json_body=None):
     except Exception:
         return {}
 
+def ask_user_acceptance(job):
+    """Ask user if they want to accept this job"""
+    print(f"\n{'='*50}")
+    print(f"📋 NEW JOB AVAILABLE")
+    print(f"   ID: {job['id']}")
+    print(f"   Name: {job['name']}")
+    print(f"   Main Entry: {job.get('main_entry', 'main.py')}")
+    print(f"   Requirements: {job.get('requirements_file', 'requirements.txt')}")
+    print(f"{'='*50}")
+    
+    while True:
+        response = input("Accept this job? (y/n): ").lower().strip()
+        if response in ['y', 'yes']:
+            return True
+        elif response in ['n', 'no']:
+            return False
+        else:
+            print("Please enter 'y' or 'n'")
+
 def download_bundle(cfg, bundle_filename, out_path):
     url = urljoin(cfg["server_url"], f"/api/jobs/{bundle_filename}/download")  # not used; we use by job id instead
     # We'll receive the direct /api/jobs/<id>/download route.
@@ -131,16 +150,24 @@ def main():
             continue
 
         if not pending:
+            print("⏳ No pending jobs... waiting")
             time.sleep(cfg.get("poll_interval_sec", 5))
             continue
 
         job = pending[0]
         job_id = job["id"]
-        print(f"Accepting job {job_id} ...")
+        
+        # Ask user for manual acceptance
+        if not ask_user_acceptance(job):
+            print("❌ Job rejected by user")
+            time.sleep(cfg.get("poll_interval_sec", 5))
+            continue
+            
+        print(f"✅ Accepting job {job_id} ...")
         try:
             api_post(cfg, f"/api/jobs/{job_id}/accept", {"worker_name": cfg["worker_name"]})
         except Exception as e:
-            print(f"Accept failed: {e}")
+            print(f"❌ Accept failed: {e}")
             time.sleep(cfg.get("poll_interval_sec", 5))
             continue
 
