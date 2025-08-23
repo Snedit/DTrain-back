@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Job #{{ job.id }} · Decentralized ML{% endblock %}
+{% block content %}
+<h1>Job #{{ job.id }} — {{ job.name }}</h1>
+<div class="card">
+  <div><strong>Status:</strong> <span id="status">{{ job.status }}</span></div>
+  <div><strong>Docker Tag:</strong> {{ job.docker_image_tag or 'n/a' }}</div>
+  <div style="margin-top: 8px;">
+    <a class="btn" href="/api/jobs/{{ job.id }}/download">Download Bundle</a>
+  </div>
+</div>
+
+<h2>Logs</h2>
+<pre id="logbox" class="logbox">{% for l in logs %}[{{ l.ts|fmt_ts }}] {{ l.message }}
+{% endfor %}</pre>
+
+<script>
+  const socket = io();
+  const jobId = {{ job.id }};
+  socket.emit('join_job', { job_id: jobId });
+
+  socket.on('job_log', (payload) => {
+    if (payload.job_id !== jobId) return;
+    const box = document.getElementById('logbox');
+    box.textContent += payload.line + "\n";
+    box.scrollTop = box.scrollHeight;
+  });
+
+  socket.on('job_status', (payload) => {
+    if (payload.job_id !== jobId) return;
+    document.getElementById('status').textContent = payload.status;
+  });
+</script>
+{% endblock %}

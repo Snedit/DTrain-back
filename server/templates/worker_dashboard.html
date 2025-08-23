@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Workers · Decentralized ML{% endblock %}
+{% block content %}
+<h1>Workers</h1>
+<table class="table">
+  <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Last Seen</th></tr></thead>
+  <tbody>
+    {% for w in workers %}
+      <tr>
+        <td>{{ w.id }}</td>
+        <td>{{ w.name }}</td>
+        <td>{{ w.status }}</td>
+        <td>{{ w.last_seen|fmt_ts }}</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

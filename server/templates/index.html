@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Jobs · Decentralized ML{% endblock %}
+{% block content %}
+<h1>Submit a Job</h1>
+<form id="jobForm" method="post" action="/api/jobs" enctype="multipart/form-data" class="card">
+  <label>Job name <input name="name" required placeholder="My Training Run"></label>
+  <label>Main entry file <input name="main_entry" value="main.py"></label>
+  <label>Requirements file <input name="requirements_file" value="requirements.txt"></label>
+  <label>Bundle (.zip) <input type="file" name="file" accept=".zip" required></label>
+  <button type="submit">Create Job</button>
+</form>
+
+<h2>Jobs</h2>
+<table class="table">
+  <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Created</th><th></th></tr></thead>
+  <tbody>
+    {% for j in jobs %}
+      <tr>
+        <td>{{ j.id }}</td>
+        <td>{{ j.name }}</td>
+        <td>{{ j.status }}</td>
+        <td>{{ j.created_at|fmt_ts }}</td>
+        <td><a class="btn" href="{{ url_for('job_detail', job_id=j.id) }}">Open</a></td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<script>
+const form = document.getElementById('jobForm');
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = new FormData(form);
+  const res = await fetch('/api/jobs', { method: 'POST', body: fd });
+  const data = await res.json();
+  if (res.ok) {
+    window.location.href = `/jobs/${data.job_id}`
+  } else {
+    alert(data.error || 'Failed to create job');
+  }
+});
+</script>
+{% endblock %}
