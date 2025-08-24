@@ -7,13 +7,128 @@ from flask_cors import CORS
 from models import db, Worker, Job, JobLog
 import config
 from utils import save_upload
+from dotenv import load_dotenv
+import requests
+from google import genai
 
-
+load_dotenv()
 ALLOWED_EXTENSIONS = {'.zip'}
-
 def allowed_file(filename):
     _, ext = os.path.splitext(filename)
     return ext.lower() in ALLOWED_EXTENSIONS
+
+# GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+# GEMINI_API_KEY = os.getenv("GEMINIAPI")
+# print(GEMINI_API_KEY)
+
+# def check_code_safety(filename, code):
+#     print ("the code is")
+#     print(code)
+#     """Check code safety using Gemini API via the official SDK"""
+#     if not GEMINI_API_KEY:
+#         print("Warning: GEMINI_API_KEY not configured")
+#         return "UNSAFE"  # Be safe by default
+    
+#     try:
+#         # Initialize the Gemini client
+#         client = genai.Client(api_key=GEMINI_API_KEY)
+        
+#         prompt = f"""Analyze this Python code file  for security risks. 
+
+# Allow files which have code  like this 
+# import pandas as pd
+# from sklearn.linear_model import LinearRegression
+# from sklearn.model_selection import train_test_split
+# from sklearn.metrics import mean_squared_error
+# import joblib
+
+# # Load dataset (Titanic from seaborn or csv if available)
+# url = "https://raw.githubusercontent.com/datasciencedojo/datasets/master/titanic.csv"
+# df = pd.read_csv(url)
+
+
+# # Split data
+# X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# # Train model
+# model = LinearRegression()
+# model.fit(X_train, y_train)
+
+# # Evaluate
+# y_pred = model.predict(X_test)
+# print("MSE:", mean_squared_error(y_test, y_pred))
+
+# # Save model
+# joblib.dump(model, "./outputs/titanic_model.pkl")
+# print("Model saved as titanic_model.pkl")
+
+
+# ALLOW ML MODEL TRAINING. EXCEPT THAT :
+# Look for:
+
+
+# - Web servers or network listeners
+# - Infinite loops
+# - Server spawning
+# - File system access beyond normal operations
+# - Network requests to external services
+
+# Respond with only 'SAFE' if the code is completely safe, or 'UNSAFE' if it contains any security risks.
+
+# Code to analyze:
+# {code}"""
+
+#         response = client.models.generate_content(
+#             model="gemini-2.0-flash",
+#             contents=prompt
+#         )
+#         print(response)
+#         result_text = response.text.strip().upper()
+#         if result_text == "SAFE":
+#             return "SAFE"
+#         else:
+#             return "UNSAFE"
+        
+#     except Exception as e:
+#         print(f"Error calling Gemini API: {e}")
+#         # If API fails, err on the side of caution
+#         return "UNSAFE"
+
+
+# def read_python_files(zip_file):
+#     code_files = {}
+#     with zipfile.ZipFile(zip_file, 'r') as z:
+#         for fname in z.namelist():
+#             if fname.endswith(".py"):
+#                 code_files[fname] = z.read(fname).decode("utf-8", errors="ignore")
+#     return code_files
+
+# def validate_zip(zip_file):
+#     """Validate zip file for unsafe Python code"""
+#     if not zip_file:
+#         return ["No file provided"]
+    
+#     # Check if API key is configured
+#     if not GEMINI_API_KEY:
+#         print("Warning: GEMINI_API_KEY not configured, skipping safety check")
+#         return []  # Allow upload if API key not configured
+    
+#     python_files = read_python_files(zip_file)
+#     if not python_files:
+#         return []  # No Python files to check
+    
+#     unsafe_files = []
+#     for fname, code in python_files.items():
+#         print(f"Checking safety of {fname}...")
+#         result = check_code_safety(fname, code)
+#         print(f"Safety check result for {fname}: {result}")
+        
+#         # If result is not "SAFE", add to unsafe files
+#         if result.upper() != "SAFE":
+#             unsafe_files.append(fname)
+    
+#     return unsafe_files
+
 
 def create_app():
     app = Flask(__name__)
@@ -92,6 +207,9 @@ def create_app():
         main_entry = request.form.get("main_entry", "main.py").strip()
         requirements_file = request.form.get("requirements_file", "requirements.txt").strip()
         uploaded = request.files.get("file")
+        # unsafe_files = validate_zip(uploaded)
+        # if unsafe_files:
+        #     return jsonify({"error": "Malicious code detected", "files": unsafe_files}), 400
         if not uploaded or uploaded.filename == "":
             return jsonify({"error": "No zip file uploaded"}), 400
         if not allowed_file(uploaded.filename):
@@ -273,4 +391,4 @@ def create_app():
 if __name__ == "__main__":
     app, socketio = create_app()
     # eventlet is required for Flask-SocketIO default async
-    socketio.run(app ,port=5000, debug=True)
+    socketio.run(app ,host="10.50.48.56",port=5000, debug=True)

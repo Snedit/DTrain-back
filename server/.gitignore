@@ -3,3 +3,4 @@
 /job_bundles
 /model_uploads_folder/*
 /__pycache__
+.env
