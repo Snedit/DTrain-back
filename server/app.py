@@ -115,6 +115,8 @@ def create_app():
     @app.route("/api/jobs/<int:job_id>/accept", methods=["POST"])
     def accept_job(job_id):
         job = Job.query.get_or_404(job_id)
+        if job.status != "pending":
+            return jsonify({"error": "Job already accepted or not pending"}), 409
         worker_name = request.json.get("worker_name")
         token = request.headers.get("Authorization", "").replace("Bearer ", "")
         if token != app.config["WORKER_SHARED_TOKEN"]:
