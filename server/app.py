@@ -8,6 +8,7 @@ from models import db, Worker, Job, JobLog
 import config
 from utils import save_upload
 
+
 ALLOWED_EXTENSIONS = {'.zip'}
 
 def allowed_file(filename):
@@ -111,6 +112,42 @@ def create_app():
     def download_job(job_id):
         job = Job.query.get_or_404(job_id)
         return send_from_directory(directory=config.JOB_BUNDLES_FOLDER, path=job.bundle_filename, as_attachment=True, download_name=f"job_{job.id}.zip")
+
+    # new route
+
+    @app.route("/api/jobs/<int:job_id>/upload_model", methods=["POST"])
+    def upload_model(job_id):
+        job = Job.query.get_or_404(job_id)
+        print("jobUpload request received")
+        token = request.headers.get("Authorization", "").replace("Bearer ", "")
+        if token != app.config["WORKER_SHARED_TOKEN"]:
+            return jsonify({"error":"unauthorized"}), 401
+
+        if "file" not in request.files:
+            print("the files accessed from server is : " , request.files.getlist())
+            return jsonify({"error":"no file uploaded"}), 400
+
+        f = request.files["file"]
+        fname = secure_filename(f"job_{job.id}_" + f.filename)
+        save_path = os.path.join(config.MODEL_UPLOADS_FOLDER, fname)
+        f.save(save_path)
+
+        append_log(job.id, f"Worker uploaded model file: {fname}")
+        return jsonify({"message":"model uploaded", "filename": fname})
+
+    @app.route("/api/jobs/<int:job_id>/download_model", methods=["GET"])
+    def download_model(job_id):
+        job = Job.query.get_or_404(job_id)
+        # find latest uploaded file for this job
+        for fname in os.listdir(config.MODEL_UPLOADS_FOLDER):
+            if fname.startswith(f"job_{job.id}_"):
+                return send_from_directory(
+                    directory=config.MODEL_UPLOADS_FOLDER,
+                    path=fname,
+                    as_attachment=True,
+                    download_name=f"job_{job.id}_model.pkl"
+                )
+        return jsonify({"error":"no model found"}), 404
 
     @app.route("/api/jobs/<int:job_id>/accept", methods=["POST"])
     def accept_job(job_id):
@@ -234,4 +271,4 @@ def create_app():
 if __name__ == "__main__":
     app, socketio = create_app()
     # eventlet is required for Flask-SocketIO default async
-    socketio.run(app, port=5000, debug=True)
+    socketio.run(app ,port=5000, debug=True)

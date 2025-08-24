@@ -1,7 +1,10 @@
 import os, time, io, zipfile, tempfile, shutil, subprocess, json, sys
 from urllib.parse import urljoin
 import requests
+# import cloudinary
+# import cloudinary.uploader
 
+import tarfile 
 # Optional: use docker SDK if available, but we can shell out for simplicity
 try:
     import docker
@@ -84,7 +87,7 @@ def build_image(context_dir, tag):
     if use_builtin:
         # Write a simple Dockerfile (server provides a similar base)
         with open(os.path.join(context_dir, "Dockerfile"), "w") as f:
-            f.write("""FROM python:3.11-slim
+            f.write("""FROM python:3.8
 WORKDIR /app
 COPY . /app
 RUN if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.txt; fi
@@ -105,24 +108,95 @@ CMD ["python", "main.py"]
             raise RuntimeError("docker build failed")
     return tag
 
+def upload_model_file(cfg, job_id, file_path):
+    print("uploading files to ")
+    url = urljoin(cfg["server_url"], f"/api/jobs/{job_id}/upload_model")
+    headers = {"Authorization": f"Bearer {cfg['token']}"}
+    
+    with open(file_path, 'rb') as f:
+        files = {'file': (os.path.basename(file_path), f)}
+        r = requests.post(url, headers=headers, files=files, timeout=120)
+        r.raise_for_status()
+        return r.json()
+    
+
+def extract_model_files(container, workdir, model_patterns=None):
+    """Extract model files from container to local directory"""
+    if model_patterns is None:
+        model_patterns = ["*.pkl", "*.joblib", "*.h5", "*.pth", "*.pt", "model*"]
+    
+    extracted_files = []
+    
+    if DOCKER_SDK:
+        # Using Docker SDK
+        for pattern in model_patterns:
+            try:
+                # Get files from container
+                tar_stream, _ = container.get_archive(f'/app/{pattern}')
+                # Extract to workdir
+                with tempfile.NamedTemporaryFile() as tmp:
+                    for chunk in tar_stream:
+                        tmp.write(chunk)
+                    tmp.flush()
+                    
+                    with tarfile.open(tmp.name, 'r') as tar:
+                        tar.extractall(workdir)
+                        extracted_files.extend([os.path.join(workdir, name) for name in tar.getnames()])
+            except Exception:
+                continue  # Pattern not found, try next
+    else:
+        # Using CLI - copy files out of container
+        for pattern in model_patterns:
+            try:
+                subprocess.run([
+                    "docker", "cp", f"{container}:/app/{pattern}", workdir
+                ], check=False, capture_output=True)  # Don't fail if pattern doesn't match
+                
+                # Check what files were copied
+                for f in os.listdir(workdir):
+                    if any(f.endswith(ext.replace('*', '')) for ext in model_patterns):
+                        extracted_files.append(os.path.join(workdir, f))
+            except Exception:
+                continue
+    
+    return extracted_files
+
 def run_container(tag, main_entry="main.py", env=None, network=None):
     env_list = [f"{k}={v}" for k,v in (env or {}).items()]
     cmd = ["python", main_entry]
+
+    # Ensure local outputs dir exists
+    outputs_dir = os.path.abspath("outputs")
+    os.makedirs(outputs_dir, exist_ok=True)
+
     if DOCKER_SDK:
         client = docker.from_env()
-        container = client.containers.run(tag, cmd, detach=True, environment=env or {}, network=network)
+        container = client.containers.run(
+            tag,
+            cmd,
+            detach=True,
+            environment=env or {},
+            network=network,
+            volumes={
+                outputs_dir: {"bind": "/app/outputs", "mode": "rw"}
+            }
+        )
         return container
     else:
-        # run in detached mode to capture logs separately
         args = ["docker", "run", "-d"]
         for e in env_list:
             args += ["-e", e]
         if network:
             args += ["--network", network]
+
+        # mount outputs folder
+        args += ["-v", f"{outputs_dir}:/app/outputs"]
+
         args += [tag] + cmd
         cid = subprocess.check_output(args, text=True).strip()
         return cid
 
+        
 def stream_logs(container, job_id, cfg):
     if DOCKER_SDK:
         for line in container.logs(stream=True, follow=True):
@@ -133,7 +207,9 @@ def stream_logs(container, job_id, cfg):
         for line in iter(proc.stdout.readline, ''):
             send_logs(cfg, job_id, [line.rstrip()])
         proc.wait()
-
+# def upload_to_cloudinary(file_path):
+#         result = cloudinary.uploader.upload(file_path, resource_type="raw")
+#         return result["public_id"], result["secure_url"]
 def main():
     cfg = load_config()
     # Register worker
@@ -187,6 +263,22 @@ def main():
             api_post(cfg, f"/api/jobs/{job_id}/status", {"status":"running", "note": "Streaming logs"})
             stream_logs(container, job_id, cfg)
             api_post(cfg, f"/api/jobs/{job_id}/status", {"status":"completed", "note": "Container finished"})
+            api_post(cfg, f"/api/jobs/{job_id}/status", {"status":"completed", "note": "Container finished"})
+
+# Look for generated files in outputs/
+            outputs_dir = os.path.abspath("outputs")
+            print("output dir = " + outputs_dir)
+            for fname in os.listdir(outputs_dir):
+                fpath = os.path.join(outputs_dir, fname)
+                if os.path.isfile(fpath):
+                    try:
+                        res = upload_model_file(cfg, job_id, fpath)
+                        print(f"✅ Uploaded {fname} -> {res}")
+                        print("removing the file after this: ")
+                        os.remove(fpath)
+                        print("successfully removed: ")
+                    except Exception as e:
+                        print(f"❌ Failed to upload {fname}: {e}")
         except Exception as e:
             print(f"Job {job_id} failed: {e}")
             send_logs(cfg, job_id, [f"[WORKER ERROR] {e}"])

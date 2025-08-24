@@ -11,3 +11,4 @@ JOB_BUNDLES_FOLDER = os.environ.get("JOB_BUNDLES_FOLDER", os.path.join(os.path.d
 
 # Simple shared token for worker auth (demo only)
 WORKER_SHARED_TOKEN = os.environ.get("WORKER_SHARED_TOKEN", "changeme-worker-token")
+MODEL_UPLOADS_FOLDER = os.environ.get("MODEL_UPLOADS_FOLDER", os.path.join(os.path.dirname(__file__), "model_uploads_folder"))
